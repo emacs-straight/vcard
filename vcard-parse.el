@@ -92,52 +92,43 @@
 
 ;;; Code:
 
-(require 'vcard)
 (require 'cl-lib)
+(require 'iso8601)
 
-(defgroup vcard-parse nil
-  "Customization options for vcard parsing."
-  :group 'vcard)
-
-(defcustom vcard-parse-select-fields nil
+(defvar vcard-parse-select-fields nil
   "A list of field types to select.
 If this variable is non-nil, only the fields listed will be
 parsed, all others will be discarded.  Note that the 'version and
 'fn properties are always returned.
 
-Most useful when let-bound around one of the parsing functions."
-  :type '(repeat symbol))
+Most useful when let-bound around one of the parsing functions.")
 
-(defcustom vcard-parse-omit-fields nil
+(defvar vcard-parse-omit-fields nil
   "A list of field types to omit.
 If this variable is non-nil, the fields listed will be discarded.
 
-Most useful when let-bound around one of the parsing functions."
-  :type '(repeat symbol))
+Most useful when let-bound around one of the parsing functions.")
 
-(defcustom vcard-parse-datetime-values t
+(defvar vcard-parse-datetime-values t
   "When non-nil, attempt to parse date/time property values.
 If successful, the property value will be (usually) converted to
 a list of integers, though if the \"type\" parameter of the
 property is \"text\", the value will be returned as a string.  It
 is also possible that parsing may fail, in which case the
-original string value will also be returned."
-  :type 'boolean)
+original string value will also be returned.")
 
-(defcustom vcard-parse-card-consumer-function nil
+(defvar vcard-parse-card-consumer-function nil
   "Custom function for consuming a single contact card.
 It is called with a list of properties, as produced by the
 built-in code, or by the return value of
-`vcard-parse-property-consumer-function'."
-  :type 'function)
+`vcard-parse-property-consumer-function'.")
 
-(defcustom vcard-parse-property-consumer-function nil
+(defvar vcard-parse-property-consumer-function nil
   "Custom function for consuming a single property.
 The function is called with four arguments: the property type as
 a symbol, the property value (all un-escaping, decoding,
 splitting, etc already complete), the property parameters as an
-alist with symbol keys, and the vcard version as a float."
-  :type 'function)
+alist with symbol keys, and the vcard version as a float.")
 
 (defvar vcard-parse-overriding-version nil
   "vCard version, as a float, used when no VERSION property is present.
@@ -157,12 +148,8 @@ semicolons.")
 (defvar vcard-datetime-properties '(bday anniversary rev)
   "A list of vcard properties representing date or time values.
 The parsing process will make some attempt at converting these
-values into lisp timestamps.")
-
-;; Maybe load our local version of iso8601.
-(eval-when-compile
-  (unless (fboundp 'iso8601-parse)
-    (require 'vcard-iso8601)))
+values into lisp time values, depending on the value of
+`vcard-parse-datetime-values'.")
 
 ;;;###autoload
 (defun vcard-parse-file (file)
@@ -225,10 +212,16 @@ Returns a list of contact objects."
     ;; with a `skip-syntax-forward' check.
 
     (while (re-search-forward "^BEGIN:VCARD\n" (line-end-position 2) t)
-      (when (setq card (ignore-errors
-			 ;; `vcard-parse-card' moves point past the
-			 ;; card.
-			 (vcard-parse-card prop-consumer card-consumer)))
+      (when (setq card (condition-case nil
+			   ;; `vcard-parse-card' moves point past the
+			   ;; card.
+			   (vcard-parse-card prop-consumer card-consumer)
+			 (error (lwarn
+				   '(vcard) :error
+				   "Parsing failed with:\n %s"
+				   (buffer-substring-no-properties
+				    (point-at-bol)
+				    (point-at-eol))))))
 	(push card out)))
 
     (nreverse out)))
